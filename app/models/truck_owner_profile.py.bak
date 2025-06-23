@@ -1,0 +1,27 @@
+import uuid
+from sqlalchemy import Column, String, DateTime, Float, Integer, ForeignKey, JSON
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from app.database import Base
+
+class TruckOwnerProfile(Base):
+    __tablename__ = "truck_owner_profiles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+
+    company_name = Column(String, nullable=True)
+    business_license = Column(String, nullable=True)
+    gst_number = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    pincode = Column(String, nullable=True)
+    bank_details = Column(JSON, nullable=True)  # Changed to JSON type for dictionary support
+    rating = Column(Float, default=0.0)
+    total_trips = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationship
+    user = relationship("User", back_populates="truck_owner_profile") 
