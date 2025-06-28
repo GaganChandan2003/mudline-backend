@@ -2,13 +2,13 @@ from datetime import timedelta
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from app.core.security import get_password_hash, authenticate_user, create_access_token
-from app.core.exceptions import UserNotFoundException, ValidationException
-from app.models.user import User, UserRole
-from app.models.profile import TruckOwnerProfile
-from app.models.profile import CustomerProfile
-from app.schemas.user import UserCreate, UserLogin, TokenResponse, TruckOwnerProfileCreate, CustomerProfileCreate
-from app.config import settings
+from backend.core.security import get_password_hash, authenticate_user, create_access_token
+from backend.core.exceptions import UserNotFoundException, ValidationException
+from backend.models.user import User, UserRole
+from backend.models.profile import TruckOwnerProfile
+from backend.models.profile import CustomerProfile
+from backend.schemas.user import UserCreate, UserLogin, TokenResponse, TruckOwnerProfileCreate, CustomerProfileCreate
+from backend.config import settings
 
 
 class AuthService:

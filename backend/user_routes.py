@@ -5,15 +5,15 @@ from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ValidationError
 from typing import List, Optional
 
-from app.database import get_db
-from app.services.auth_service import AuthService
-from app.models.user import User, UserRole, TruckOwnerProfile, CustomerProfile
-from app.schemas.user import (
+from backend.database import get_db
+from backend.services.auth_service import AuthService
+from backend.models.user import User, UserRole, TruckOwnerProfile, CustomerProfile
+from backend.schemas.user import (
     UserCreate, UserResponse, UserLogin, TokenResponse, UserUpdate,
     TruckOwnerProfileCreate, TruckOwnerProfileResponse, CustomerProfileCreate, CustomerProfileResponse
 )
-from app.core.security import get_current_active_user, get_password_hash
-from app.core.exceptions import UserNotFoundException, ValidationException
+from backend.core.security import get_current_active_user, get_password_hash
+from backend.core.exceptions import UserNotFoundException, ValidationException
 
 router = APIRouter(prefix="/api/v1/users", tags=["Users"])
 

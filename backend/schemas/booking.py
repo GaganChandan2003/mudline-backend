@@ -2,7 +2,7 @@ from pydantic import BaseModel, validator
 from typing import Optional
 from datetime import datetime
 from decimal import Decimal
-from app.models.booking import BookingType, BookingStatus
+from backend.models.booking import BookingType, BookingStatus
 
 
 class BookingBase(BaseModel):

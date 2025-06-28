@@ -3,19 +3,19 @@ from datetime import datetime
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
-from app.core.exceptions import (
+from backend.core.exceptions import (
     BookingNotFoundException, TruckNotFoundException, TruckNotAvailableException,
     InsufficientCapacityException, BookingNotAllowedException, LocationNotFoundException
 )
-from app.models.booking import Booking, BookingType, BookingStatus
-from app.models.truck import Truck, TruckStatus, PreloadedMaterial, PreloadedMaterialStatus
-from app.models.location import MaterialLocation, LocationMaterial, AvailabilityStatus
-from app.models.user import User, UserRole
-from app.schemas.booking import (
+from backend.models.booking import Booking, BookingType, BookingStatus
+from backend.models.truck import Truck, TruckStatus, PreloadedMaterial, PreloadedMaterialStatus
+from backend.models.location import MaterialLocation, LocationMaterial, AvailabilityStatus
+from backend.models.user import User, UserRole
+from backend.schemas.booking import (
     BookingCreate, BookingResponse, BookingUpdate, BookingStatusUpdate, PreloadedBookingCreate,
     LocationBasedBookingCreate, TraditionalBookingCreate, NearbyTruckSearch
 )
-from app.utils.distance_calculator import DistanceCalculator
+from backend.utils.distance_calculator import DistanceCalculator
 
 
 class BookingService:

@@ -2,7 +2,7 @@ from pydantic import BaseModel, validator
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
-from app.models.truck import TruckStatus, PreloadedMaterialStatus
+from backend.models.truck import TruckStatus, PreloadedMaterialStatus
 
 
 class TruckBase(BaseModel):

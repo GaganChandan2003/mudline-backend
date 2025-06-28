@@ -1,15 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from app.database import get_db
-from app.services.booking_service import BookingService
-from app.schemas import (
+from backend.database import get_db
+from backend.services.booking_service import BookingService
+from backend.schemas import (
     BookingCreate, BookingUpdate, BookingResponse, BookingStatusUpdate,
     PreloadedBookingCreate, LocationBasedBookingCreate, TraditionalBookingCreate
 )
-from app.core.security import get_current_active_user
-from app.models.user import User, UserRole
-from app.models.booking import BookingStatus
+from backend.core.security import get_current_active_user
+from backend.models.user import User, UserRole
+from backend.models.booking import BookingStatus
 
 router = APIRouter(prefix="/api/v1/bookings", tags=["Bookings"])
 

@@ -1,5 +1,5 @@
-from app.database import Base, engine
-from app.models import user, profile  # Import models to ensure they're registered with SQLAlchemy
+from backend.database import Base, engine
+from backend.models import user, profile  # Import models to ensure they're registered with SQLAlchemy
 
 print("Dropping all tables...")
 Base.metadata.drop_all(bind=engine)

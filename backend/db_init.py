@@ -1,6 +1,6 @@
-from app.database import engine, Base
+from backend.database import engine, Base
 # Import models so that they are registered with SQLAlchemy metadata
-from app.models import (
+from backend.models import (
     user,
     profile,
     truck,

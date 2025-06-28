@@ -2,10 +2,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import structlog
-from app.config import settings
-from app.database import engine, Base
-from app.booking_routes import router as booking_router
-from app.user_routes import router as user_router
+from backend.config import settings
+from backend.database import engine, Base
+from backend.booking_routes import router as booking_router
+from backend.user_routes import router as user_router
 
 # Configure structured logging
 structlog.configure(
@@ -120,7 +120,7 @@ app.include_router(booking_router)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "app.main:app",
+        "backend.main:app",
         host="0.0.0.0",
         port=8000,
         reload=settings.DEBUG,

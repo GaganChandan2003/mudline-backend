@@ -3,7 +3,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from sqlalchemy_utils import UUIDType
 import enum
-from app.database import Base
+from backend.database import Base
 import uuid
 
 

@@ -3,8 +3,8 @@ from sqlalchemy import Column, String, Boolean, Enum, DateTime, func
 from sqlalchemy.dialects.mysql import CHAR
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from app.database import Base
-from app.models.user_role import UserRole  # Make sure this Enum exists
+from backend.database import Base
+from backend.models.user_role import UserRole  # Make sure this Enum exists
 from .profile import TruckOwnerProfile, CustomerProfile
 
 class User(Base):
