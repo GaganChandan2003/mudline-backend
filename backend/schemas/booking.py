@@ -1,146 +1,118 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, field_serializer
 from typing import Optional
 from datetime import datetime
 from decimal import Decimal
-from backend.models.booking import BookingType, BookingStatus
+from backend.models.booking import BookingStatus, BookingState
 
 
 class BookingBase(BaseModel):
-    pickup_location: str
-    drop_location: str
-    material_type: str
+    material_source_id: str
+    destination: str
+    vehicle_type_id: str
     quantity: Decimal
-    unit: str
-    total_price: Decimal
-    special_requirements: Optional[str] = None
-    booking_date: datetime
+    booking_time: datetime
 
     @validator('quantity')
     def validate_quantity(cls, v):
         if v <= 0:
             raise ValueError('Quantity must be greater than 0')
-        return v
-
-    @validator('total_price')
-    def validate_total_price(cls, v):
-        if v <= 0:
-            raise ValueError('Total price must be greater than 0')
-        return v
-
-
-class PreloadedBookingCreate(BaseModel):
-    truck_id: str
-    pickup_location: str
-    drop_location: str
-    quantity: Decimal
-    special_requirements: Optional[str] = None
-    booking_date: datetime
-
-    @validator('quantity')
-    def validate_quantity(cls, v):
-        if v <= 0:
-            raise ValueError('Quantity must be greater than 0')
-        return v
-
-
-class LocationBasedBookingCreate(BaseModel):
-    location_id: str
-    material_type: str
-    quantity: Decimal
-    unit: str
-    drop_location: str
-    special_requirements: Optional[str] = None
-    booking_date: datetime
-
-    @validator('quantity')
-    def validate_quantity(cls, v):
-        if v <= 0:
-            raise ValueError('Quantity must be greater than 0')
-        return v
-
-
-class TraditionalBookingCreate(BaseModel):
-    truck_owner_id: str
-    pickup_location: str
-    drop_location: str
-    material_type: str
-    quantity: Decimal
-    unit: str
-    total_price: Decimal
-    special_requirements: Optional[str] = None
-    booking_date: datetime
-
-    @validator('quantity')
-    def validate_quantity(cls, v):
-        if v <= 0:
-            raise ValueError('Quantity must be greater than 0')
-        return v
-
-    @validator('total_price')
-    def validate_total_price(cls, v):
-        if v <= 0:
-            raise ValueError('Total price must be greater than 0')
         return v
 
 
 class BookingCreate(BookingBase):
-    booking_type: BookingType
-    truck_owner_id: Optional[str] = None
-    truck_id: Optional[str] = None
+    pass
 
 
 class BookingUpdate(BaseModel):
-    pickup_location: Optional[str] = None
-    drop_location: Optional[str] = None
-    material_type: Optional[str] = None
+    destination: Optional[str] = None
+    vehicle_type_id: Optional[str] = None
     quantity: Optional[Decimal] = None
-    unit: Optional[str] = None
-    total_price: Optional[Decimal] = None
-    special_requirements: Optional[str] = None
-    estimated_delivery: Optional[datetime] = None
+    expected_delivery_time: Optional[datetime] = None
 
     @validator('quantity')
     def validate_quantity(cls, v):
         if v is not None and v <= 0:
             raise ValueError('Quantity must be greater than 0')
-        return v
-
-    @validator('total_price')
-    def validate_total_price(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError('Total price must be greater than 0')
         return v
 
 
 class BookingStatusUpdate(BaseModel):
     status: BookingStatus
-    estimated_delivery: Optional[datetime] = None
-    actual_delivery: Optional[datetime] = None
+    state: Optional[BookingState] = None
+    expected_delivery_time: Optional[datetime] = None
+    actual_delivery_time: Optional[datetime] = None
+    notes: Optional[str] = None
 
 
 class BookingResponse(BookingBase):
     id: str
-    customer_id: str
-    truck_owner_id: str
-    truck_id: Optional[str]
-    booking_type: BookingType
+    user_id: str
     status: BookingStatus
-    estimated_delivery: Optional[datetime]
-    actual_delivery: Optional[datetime]
+    state: BookingState
+    assigned_truck_id: Optional[str]
+    expected_delivery_time: Optional[datetime]
+    actual_delivery_time: Optional[datetime]
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("id")
+    def serialize_id(self, v):
+        return str(v)
+
+    @field_serializer("user_id")
+    def serialize_user_id(self, v):
+        return str(v)
+
+    @field_serializer("material_source_id")
+    def serialize_material_source_id(self, v):
+        return str(v)
+
+    @field_serializer("vehicle_type_id")
+    def serialize_vehicle_type_id(self, v):
+        return str(v)
+
+    @field_serializer("assigned_truck_id")
+    def serialize_assigned_truck_id(self, v):
+        return str(v) if v else None
 
     class Config:
         from_attributes = True
 
 
 class BookingWithDetailsResponse(BookingResponse):
-    customer_name: str
-    truck_owner_name: str
-    truck_number: Optional[str] = None
+    user_name: str
+    material_type: str
+    material_source: str
+    vehicle_type_name: str
+    assigned_truck_number: Optional[str] = None
+    driver_name: Optional[str] = None
+    driver_contact: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class BookingStatusHistoryResponse(BaseModel):
+    id: str
+    booking_id: str
+    status: str
+    updated_at: datetime
+    notes: Optional[str] = None
+
+    @field_serializer("id")
+    def serialize_id(self, v):
+        return str(v)
+
+    @field_serializer("booking_id")
+    def serialize_booking_id(self, v):
+        return str(v)
+
+    class Config:
+        from_attributes = True
+
+
+class TruckAssignmentRequest(BaseModel):
+    truck_id: Optional[str] = None  # If not provided, auto-assign best truck
 
 
 class NearbyTruckSearch(BaseModel):

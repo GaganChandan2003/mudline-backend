@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, validator, field_serializer
 from typing import Optional
 from datetime import datetime
 from backend.models.user import UserRole
@@ -55,6 +55,10 @@ class TokenResponse(BaseModel):
     user_id: str
     role: UserRole
 
+    @field_serializer("user_id")
+    def serialize_user_id(self, v):
+        return str(v)
+
 
 class UserResponse(BaseModel):
     id: str
@@ -68,6 +72,10 @@ class UserResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("id")
+    def serialize_id(self, v):
+        return str(v)
 
     class Config:
         from_attributes = True
@@ -99,6 +107,14 @@ class TruckOwnerProfileResponse(BaseModel):
     total_trips: int
     created_at: datetime
 
+    @field_serializer("id")
+    def serialize_id(self, v):
+        return str(v)
+
+    @field_serializer("user_id")
+    def serialize_user_id(self, v):
+        return str(v)
+
     class Config:
         from_attributes = True
 
@@ -122,6 +138,14 @@ class CustomerProfileResponse(BaseModel):
     rating: float
     total_bookings: int
     created_at: datetime
+
+    @field_serializer("id")
+    def serialize_id(self, v):
+        return str(v)
+
+    @field_serializer("user_id")
+    def serialize_user_id(self, v):
+        return str(v)
 
     class Config:
         from_attributes = True 

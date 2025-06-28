@@ -1,11 +1,18 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import structlog
 from backend.config import settings
 from backend.database import engine, Base
 from backend.booking_routes import router as booking_router
 from backend.user_routes import router as user_router
+from backend.material_routes import router as material_router
+from backend.vehicle_type_routes import router as vehicle_type_router
+from backend.truck_routes import router as truck_router
+
+# Import all models to ensure they are registered with SQLAlchemy
+from backend.models import *
 
 # Configure structured logging
 structlog.configure(
@@ -69,9 +76,25 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """Handle HTTP exceptions"""
+    logger.error(
+        "HTTP exception occurred",
+        path=request.url.path,
+        method=request.method,
+        status_code=exc.status_code,
+        detail=exc.detail
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    """Handle all exceptions"""
+    """Handle all other exceptions"""
     logger.error(
         "Unhandled exception occurred",
         path=request.url.path,
@@ -79,9 +102,9 @@ async def global_exception_handler(request, exc):
         error=str(exc),
         exc_info=True
     )
-    return HTTPException(
+    return JSONResponse(
         status_code=500,
-        detail="Internal server error"
+        content={"detail": "Internal server error"}
     )
 
 
@@ -111,6 +134,9 @@ async def root():
 app.include_router(user_router, tags=["Users"])
 # app.include_router(trucks.router, prefix="/api/v1/trucks", tags=["Trucks"])
 app.include_router(booking_router)
+app.include_router(material_router)
+app.include_router(vehicle_type_router)
+app.include_router(truck_router)
 # app.include_router(locations.router, prefix="/api/v1/locations", tags=["Locations"])
 # app.include_router(payments.router, prefix="/api/v1/payments", tags=["Payments"])
 # app.include_router(ratings.router, prefix="/api/v1/ratings", tags=["Ratings"])

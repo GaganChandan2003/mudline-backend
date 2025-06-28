@@ -4,8 +4,8 @@ from typing import List, Optional
 from backend.database import get_db
 from backend.services.booking_service import BookingService
 from backend.schemas import (
-    BookingCreate, BookingUpdate, BookingResponse, BookingStatusUpdate,
-    PreloadedBookingCreate, LocationBasedBookingCreate, TraditionalBookingCreate
+    BookingCreate, BookingResponse, BookingUpdate, BookingStatusUpdate,
+    BookingWithDetailsResponse, BookingStatusHistoryResponse, TruckAssignmentRequest
 )
 from backend.core.security import get_current_active_user
 from backend.models.user import User, UserRole
@@ -13,65 +13,79 @@ from backend.models.booking import BookingStatus
 
 router = APIRouter(prefix="/api/v1/bookings", tags=["Bookings"])
 
-# Create Preloaded Booking
-@router.post("/preloaded", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
-def create_preloaded_booking(
-    booking_data: PreloadedBookingCreate,
+# POST /bookings - Create a new material booking
+@router.post("/", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
+def create_booking(
+    booking_data: BookingCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    """Create a new material booking with automatic truck assignment"""
     service = BookingService(db)
-    booking = service.create_preloaded_booking(current_user.id, booking_data)
+    booking = service.create_booking(current_user.id, booking_data)
     return booking
 
-# Create Location-Based Booking
-@router.post("/location-based", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
-def create_location_based_booking(
-    booking_data: LocationBasedBookingCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    service = BookingService(db)
-    booking = service.create_location_based_booking(current_user.id, booking_data)
-    return booking
-
-# Create Traditional Booking
-@router.post("/traditional", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
-def create_traditional_booking(
-    booking_data: TraditionalBookingCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    service = BookingService(db)
-    booking = service.create_traditional_booking(current_user.id, booking_data)
-    return booking
-
-# Get Bookings for Current User
-@router.get("/my", response_model=List[BookingResponse])
-def get_my_bookings(
+# GET /bookings - List all bookings
+@router.get("/", response_model=List[BookingResponse])
+def get_bookings(
     status: Optional[BookingStatus] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    """Get all bookings with optional status filtering"""
     service = BookingService(db)
-    bookings = service.get_user_bookings(current_user.id, current_user.role, status)
+    bookings = service.get_bookings(current_user.id, status)
     return bookings
 
-# Get Booking Details
-@router.get("/{booking_id}", response_model=BookingResponse)
+# GET /bookings/:id - Get booking details + status history
+@router.get("/{booking_id}", response_model=BookingWithDetailsResponse)
 def get_booking_details(
     booking_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    """Get detailed booking information with all related data"""
     service = BookingService(db)
-    booking = service.get_booking_details(booking_id)
-    # Optionally, check if current_user is authorized to view this booking
-    if booking.customer_id != current_user.id and booking.truck_owner_id != current_user.id:
+    booking = service.get_booking_with_details(booking_id)
+    
+    # Check if user is authorized to view this booking
+    if booking.user_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Not authorized to view this booking")
+    
     return booking
 
-# Update Booking Status (Truck Owner)
+# GET /bookings/:id/status-history - Get booking status history
+@router.get("/{booking_id}/status-history", response_model=List[BookingStatusHistoryResponse])
+def get_booking_status_history(
+    booking_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get booking status history"""
+    service = BookingService(db)
+    booking = service.get_booking_details(booking_id)
+    
+    # Check if user is authorized to view this booking
+    if booking.user_id != current_user.id and current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Not authorized to view this booking")
+    
+    history = service.get_booking_status_history(booking_id)
+    return history
+
+# PATCH /bookings/:id/assign-truck - Auto-assign best truck
+@router.patch("/{booking_id}/assign-truck", response_model=BookingResponse)
+def assign_truck(
+    booking_id: str,
+    assignment_data: TruckAssignmentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Assign truck to booking (manual or auto-assign)"""
+    service = BookingService(db)
+    booking = service.assign_truck(booking_id, assignment_data)
+    return booking
+
+# PATCH /bookings/:id/status - Update booking state/status
 @router.patch("/{booking_id}/status", response_model=BookingResponse)
 def update_booking_status(
     booking_id: str,
@@ -79,33 +93,19 @@ def update_booking_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    """Update booking status and state"""
     service = BookingService(db)
-    booking = service.get_booking_details(booking_id)
-    if booking.truck_owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only the truck owner can update status")
-    updated = service.update_booking_status(booking_id, status_update)
-    return updated
-
-# Accept Booking (Truck Owner)
-@router.post("/{booking_id}/accept", response_model=BookingResponse)
-def accept_booking(
-    booking_id: str,
-    truck_id: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    service = BookingService(db)
-    booking = service.accept_booking(booking_id, current_user.id, truck_id)
+    booking = service.update_booking_status(booking_id, status_update)
     return booking
 
-# Reject Booking (Truck Owner)
-@router.post("/{booking_id}/reject", response_model=BookingResponse)
-def reject_booking(
+# DELETE /bookings/:id - Cancel booking
+@router.delete("/{booking_id}", response_model=BookingResponse)
+def cancel_booking(
     booking_id: str,
-    reason: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    """Cancel a booking"""
     service = BookingService(db)
-    booking = service.reject_booking(booking_id, current_user.id, reason)
+    booking = service.cancel_booking(booking_id, current_user.id)
     return booking 

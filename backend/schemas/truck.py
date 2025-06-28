@@ -1,4 +1,4 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, field_serializer
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
@@ -78,6 +78,14 @@ class TruckResponse(TruckBase):
     created_at: datetime
     updated_at: datetime
 
+    @field_serializer("id")
+    def serialize_id(self, v):
+        return str(v)
+
+    @field_serializer("truck_owner_id")
+    def serialize_truck_owner_id(self, v):
+        return str(v)
+
     class Config:
         from_attributes = True
 
@@ -134,6 +142,14 @@ class PreloadedMaterialResponse(PreloadedMaterialBase):
     truck_id: str
     status: PreloadedMaterialStatus
     created_at: datetime
+
+    @field_serializer("id")
+    def serialize_id(self, v):
+        return str(v)
+
+    @field_serializer("truck_id")
+    def serialize_truck_id(self, v):
+        return str(v)
 
     class Config:
         from_attributes = True

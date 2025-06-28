@@ -2,18 +2,20 @@ from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func as sql_func
 from backend.core.exceptions import (
     BookingNotFoundException, TruckNotFoundException, TruckNotAvailableException,
-    InsufficientCapacityException, BookingNotAllowedException, LocationNotFoundException
+    InsufficientCapacityException, BookingNotAllowedException, MaterialNotFoundException,
+    VehicleTypeNotFoundException
 )
-from backend.models.booking import Booking, BookingType, BookingStatus
-from backend.models.truck import Truck, TruckStatus, PreloadedMaterial, PreloadedMaterialStatus
-from backend.models.location import MaterialLocation, LocationMaterial, AvailabilityStatus
+from backend.models.booking import Booking, BookingStatus, BookingState, BookingStatusHistory
+from backend.models.truck import Truck, TruckStatus
+from backend.models.material import Material, MaterialType
+from backend.models.vehicle_type import VehicleType
 from backend.models.user import User, UserRole
 from backend.schemas.booking import (
-    BookingCreate, BookingResponse, BookingUpdate, BookingStatusUpdate, PreloadedBookingCreate,
-    LocationBasedBookingCreate, TraditionalBookingCreate, NearbyTruckSearch
+    BookingCreate, BookingResponse, BookingUpdate, BookingStatusUpdate,
+    BookingWithDetailsResponse, BookingStatusHistoryResponse, TruckAssignmentRequest
 )
 from backend.utils.distance_calculator import DistanceCalculator
 
@@ -22,260 +24,122 @@ class BookingService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_preloaded_booking(self, customer_id: str, booking_data: PreloadedBookingCreate) -> Booking:
-        """Create a booking for a pre-loaded truck"""
-        # Get the truck and verify it's available
-        truck = self.db.query(Truck).filter(Truck.id == booking_data.truck_id).first()
-        if not truck:
-            raise TruckNotFoundException(booking_data.truck_id)
-
-        if truck.status != TruckStatus.AVAILABLE:
-            raise TruckNotAvailableException(booking_data.truck_id)
-
-        if not truck.is_preloaded:
-            raise BookingNotAllowedException("Truck is not pre-loaded")
-
-        # Get preloaded material
-        material = self.db.query(PreloadedMaterial).filter(
-            and_(
-                PreloadedMaterial.truck_id == booking_data.truck_id,
-                PreloadedMaterial.status == PreloadedMaterialStatus.AVAILABLE
-            )
-        ).first()
-
+    def create_booking(self, user_id: str, booking_data: BookingCreate) -> Booking:
+        """Create a new material booking with automatic truck assignment"""
+        # Validate material exists
+        material = self.db.query(Material).filter(Material.id == booking_data.material_id).first()
         if not material:
-            raise BookingNotAllowedException("No available pre-loaded material found")
+            raise MaterialNotFoundException(booking_data.material_id)
 
-        # Check capacity
-        if booking_data.quantity > material.quantity:
-            raise InsufficientCapacityException(float(material.quantity), float(booking_data.quantity))
+        # Validate vehicle type exists
+        vehicle_type = self.db.query(VehicleType).filter(VehicleType.id == booking_data.vehicle_type_id).first()
+        if not vehicle_type:
+            raise VehicleTypeNotFoundException(booking_data.vehicle_type_id)
 
         # Create booking
         booking = Booking(
-            customer_id=customer_id,
-            truck_owner_id=truck.truck_owner_id,
-            truck_id=truck.id,
-            booking_type=BookingType.PRELOADED,
-            pickup_location=material.destination or truck.current_location,
-            drop_location=booking_data.drop_location,
-            material_type=material.material_type,
+            user_id=user_id,
+            material_id=booking_data.material_id,
+            source=booking_data.source,
+            destination=booking_data.destination,
+            vehicle_type_id=booking_data.vehicle_type_id,
             quantity=booking_data.quantity,
-            unit=material.unit,
-            total_price=material.price * (booking_data.quantity / material.quantity),
-            special_requirements=booking_data.special_requirements,
-            booking_date=booking_data.booking_date,
-            status=BookingStatus.ACCEPTED  # Pre-loaded bookings are auto-accepted
-        )
-
-        # Update truck and material status
-        truck.status = TruckStatus.BOOKED
-        material.status = PreloadedMaterialStatus.BOOKED
-
-        self.db.add(booking)
-        self.db.commit()
-        self.db.refresh(booking)
-        return booking
-
-    def create_location_based_booking(self, customer_id: str, booking_data: LocationBasedBookingCreate) -> Booking:
-        """Create a booking based on material location"""
-        # Get the location and verify it's active
-        location = self.db.query(MaterialLocation).filter(
-            and_(
-                MaterialLocation.id == booking_data.location_id,
-                MaterialLocation.status == "active"
-            )
-        ).first()
-
-        if not location:
-            raise LocationNotFoundException(booking_data.location_id)
-
-        # Get material availability
-        material = self.db.query(LocationMaterial).filter(
-            and_(
-                LocationMaterial.location_id == booking_data.location_id,
-                LocationMaterial.material_type == booking_data.material_type,
-                LocationMaterial.availability_status == AvailabilityStatus.AVAILABLE
-            )
-        ).first()
-
-        if not material:
-            raise BookingNotAllowedException(f"Material {booking_data.material_type} not available at this location")
-
-        # Find nearby available trucks
-        nearby_trucks = self.get_nearby_trucks(
-            latitude=location.latitude,
-            longitude=location.longitude,
-            radius_km=50
-        )
-
-        if not nearby_trucks:
-            raise BookingNotAllowedException("No available trucks found near the location")
-
-        # Create booking (will be assigned to the first available truck owner)
-        booking = Booking(
-            customer_id=customer_id,
-            truck_owner_id=nearby_trucks[0].truck_owner_id,
-            booking_type=BookingType.LOCATION_BASED,
-            pickup_location=location.address,
-            drop_location=booking_data.drop_location,
-            material_type=booking_data.material_type,
-            quantity=booking_data.quantity,
-            unit=booking_data.unit,
-            total_price=material.price_per_unit * booking_data.quantity if material.price_per_unit else 0,
-            special_requirements=booking_data.special_requirements,
-            booking_date=booking_data.booking_date,
-            status=BookingStatus.PENDING
+            status=BookingStatus.PENDING,
+            state=BookingState.PENDING,
+            booking_time=booking_data.booking_time
         )
 
         self.db.add(booking)
         self.db.commit()
         self.db.refresh(booking)
+
+        # Auto-assign truck
+        self._auto_assign_truck(booking)
+
+        # Add status history
+        self._add_status_history(booking.id, BookingStatus.PENDING, "Booking created")
+
         return booking
 
-    def create_traditional_booking(self, customer_id: str, booking_data: TraditionalBookingCreate) -> Booking:
-        """Create a traditional booking request"""
-        # Verify truck owner exists and is a truck owner
-        truck_owner = self.db.query(User).filter(
+    def _auto_assign_truck(self, booking: Booking) -> Optional[Truck]:
+        """Auto-assign the best available truck based on criteria"""
+        # Find available trucks matching criteria
+        available_trucks = self.db.query(Truck).filter(
             and_(
-                User.id == booking_data.truck_owner_id,
-                User.role == UserRole.TRUCK_OWNER
-            )
-        ).first()
-
-        if not truck_owner:
-            raise BookingNotAllowedException("Invalid truck owner")
-
-        # Create booking
-        booking = Booking(
-            customer_id=customer_id,
-            truck_owner_id=booking_data.truck_owner_id,
-            booking_type=BookingType.TRADITIONAL,
-            pickup_location=booking_data.pickup_location,
-            drop_location=booking_data.drop_location,
-            material_type=booking_data.material_type,
-            quantity=booking_data.quantity,
-            unit=booking_data.unit,
-            total_price=booking_data.total_price,
-            special_requirements=booking_data.special_requirements,
-            booking_date=booking_data.booking_date,
-            status=BookingStatus.PENDING
-        )
-
-        self.db.add(booking)
-        self.db.commit()
-        self.db.refresh(booking)
-        return booking
-
-    def get_nearby_trucks(self, latitude: Decimal, longitude: Decimal, radius_km: float = 50) -> List[Truck]:
-        """Find trucks within specified radius"""
-        trucks = self.db.query(Truck).filter(
-            and_(
-                Truck.status == TruckStatus.AVAILABLE,
-                Truck.latitude.isnot(None),
-                Truck.longitude.isnot(None)
+                Truck.is_available == True,
+                Truck.vehicle_type_id == booking.vehicle_type_id,
+                Truck.status == TruckStatus.AVAILABLE
             )
         ).all()
 
-        # Filter trucks by distance
+        if not available_trucks:
+            return None
+
+        # Filter by location proximity (source location)
         nearby_trucks = []
-        for truck in trucks:
-            distance = DistanceCalculator.haversine_distance(
-                float(latitude), float(longitude),
-                float(truck.latitude), float(truck.longitude)
-            )
-            if distance <= radius_km:
-                truck.distance = distance
+        for truck in available_trucks:
+            # Simple location matching - can be enhanced with actual distance calculation
+            if truck.current_location.lower() in booking.source.lower() or booking.source.lower() in truck.current_location.lower():
                 nearby_trucks.append(truck)
 
-        # Sort by distance
-        return sorted(nearby_trucks, key=lambda x: x.distance)
+        # If no nearby trucks, use all available trucks
+        if not nearby_trucks:
+            nearby_trucks = available_trucks
 
-    def accept_booking(self, booking_id: str, truck_owner_id: str, truck_id: Optional[str] = None) -> Booking:
-        """Accept a booking request"""
-        booking = self.db.query(Booking).filter(
-            and_(
-                Booking.id == booking_id,
-                Booking.truck_owner_id == truck_owner_id,
-                Booking.status == BookingStatus.PENDING
-            )
-        ).first()
+        # Select best truck (least used, same owner preference, etc.)
+        best_truck = self._select_best_truck(nearby_trucks)
 
-        if not booking:
-            raise BookingNotFoundException(booking_id)
+        if best_truck:
+            # Assign truck to booking
+            booking.assigned_truck_id = best_truck.id
+            booking.status = BookingStatus.TRUCK_ASSIGNED
+            booking.state = BookingState.ASSIGNED
 
-        # If truck_id is provided, verify it belongs to the truck owner
-        if truck_id:
-            truck = self.db.query(Truck).filter(
-                and_(
-                    Truck.id == truck_id,
-                    Truck.truck_owner_id == truck_owner_id,
-                    Truck.status == TruckStatus.AVAILABLE
-                )
-            ).first()
+            # Mark truck as unavailable
+            best_truck.is_available = False
+            best_truck.status = TruckStatus.BOOKED
 
-            if not truck:
-                raise TruckNotFoundException(truck_id)
+            self.db.commit()
+            self.db.refresh(booking)
 
-            booking.truck_id = truck_id
-            truck.status = TruckStatus.BOOKED
+            # Add status history
+            self._add_status_history(booking.id, BookingStatus.TRUCK_ASSIGNED, f"Truck {best_truck.vehicle_number} assigned")
 
-        booking.status = BookingStatus.ACCEPTED
+        return best_truck
+
+    def _select_best_truck(self, trucks: List[Truck]) -> Optional[Truck]:
+        """Select the best truck from available options"""
+        if not trucks:
+            return None
+
+        # For now, select the first available truck
+        # This can be enhanced with more sophisticated selection logic:
+        # - Least used truck
+        # - Same owner preference
+        # - Driver rating
+        # - Truck condition
+        return trucks[0]
+
+    def _add_status_history(self, booking_id: str, status: str, notes: Optional[str] = None):
+        """Add entry to booking status history"""
+        history = BookingStatusHistory(
+            booking_id=booking_id,
+            status=status,
+            notes=notes
+        )
+        self.db.add(history)
         self.db.commit()
-        self.db.refresh(booking)
-        return booking
 
-    def reject_booking(self, booking_id: str, truck_owner_id: str, reason: str = None) -> Booking:
-        """Reject a booking request"""
-        booking = self.db.query(Booking).filter(
-            and_(
-                Booking.id == booking_id,
-                Booking.truck_owner_id == truck_owner_id,
-                Booking.status == BookingStatus.PENDING
-            )
-        ).first()
-
-        if not booking:
-            raise BookingNotFoundException(booking_id)
-
-        booking.status = BookingStatus.REJECTED
-        self.db.commit()
-        self.db.refresh(booking)
-        return booking
-
-    def update_booking_status(self, booking_id: str, status_update: BookingStatusUpdate) -> Booking:
-        """Update booking status"""
-        booking = self.db.query(Booking).filter(Booking.id == booking_id).first()
-        if not booking:
-            raise BookingNotFoundException(booking_id)
-
-        booking.status = status_update.status
-        if status_update.estimated_delivery:
-            booking.estimated_delivery = status_update.estimated_delivery
-        if status_update.actual_delivery:
-            booking.actual_delivery = status_update.actual_delivery
-
-        # If completed, update truck status
-        if status_update.status == BookingStatus.COMPLETED and booking.truck_id:
-            truck = self.db.query(Truck).filter(Truck.id == booking.truck_id).first()
-            if truck:
-                truck.status = TruckStatus.AVAILABLE
-
-        self.db.commit()
-        self.db.refresh(booking)
-        return booking
-
-    def get_user_bookings(self, user_id: str, role: UserRole, status: Optional[BookingStatus] = None) -> List[Booking]:
-        """Get bookings for a user based on their role"""
+    def get_bookings(self, user_id: Optional[str] = None, status: Optional[BookingStatus] = None) -> List[Booking]:
+        """Get all bookings with optional filtering"""
         query = self.db.query(Booking)
-
-        if role == UserRole.CUSTOMER:
-            query = query.filter(Booking.customer_id == user_id)
-        else:
-            query = query.filter(Booking.truck_owner_id == user_id)
-
+        
+        if user_id:
+            query = query.filter(Booking.user_id == user_id)
+        
         if status:
             query = query.filter(Booking.status == status)
-
+        
         return query.order_by(Booking.created_at.desc()).all()
 
     def get_booking_details(self, booking_id: str) -> Booking:
@@ -283,4 +147,152 @@ class BookingService:
         booking = self.db.query(Booking).filter(Booking.id == booking_id).first()
         if not booking:
             raise BookingNotFoundException(booking_id)
+        return booking
+
+    def get_booking_with_details(self, booking_id: str) -> BookingWithDetailsResponse:
+        """Get booking with all related details"""
+        booking = self.db.query(Booking).filter(Booking.id == booking_id).first()
+        if not booking:
+            raise BookingNotFoundException(booking_id)
+
+        # Get related data
+        user = self.db.query(User).filter(User.id == booking.user_id).first()
+        material = self.db.query(Material).filter(Material.id == booking.material_id).first()
+        vehicle_type = self.db.query(VehicleType).filter(VehicleType.id == booking.vehicle_type_id).first()
+        
+        truck = None
+        if booking.assigned_truck_id:
+            truck = self.db.query(Truck).filter(Truck.id == booking.assigned_truck_id).first()
+
+        # Create response with details
+        response_data = {
+            "id": booking.id,
+            "user_id": booking.user_id,
+            "user_name": f"{user.first_name} {user.last_name}" if user else "Unknown",
+            "material_id": booking.material_id,
+            "material_type": material.type.value if material else "Unknown",
+            "material_source": material.source if material else "Unknown",
+            "source": booking.source,
+            "destination": booking.destination,
+            "vehicle_type_id": booking.vehicle_type_id,
+            "vehicle_type_name": vehicle_type.name if vehicle_type else "Unknown",
+            "quantity": booking.quantity,
+            "status": booking.status,
+            "state": booking.state,
+            "assigned_truck_id": booking.assigned_truck_id,
+            "assigned_truck_number": truck.vehicle_number if truck else None,
+            "driver_name": truck.driver_name if truck else None,
+            "driver_contact": truck.driver_contact if truck else None,
+            "booking_time": booking.booking_time,
+            "expected_delivery_time": booking.expected_delivery_time,
+            "actual_delivery_time": booking.actual_delivery_time,
+            "created_at": booking.created_at,
+            "updated_at": booking.updated_at
+        }
+
+        return BookingWithDetailsResponse(**response_data)
+
+    def assign_truck(self, booking_id: str, assignment_data: TruckAssignmentRequest) -> Booking:
+        """Assign truck to booking (manual or auto-assign)"""
+        booking = self.get_booking_details(booking_id)
+        
+        if booking.status != BookingStatus.PENDING:
+            raise BookingNotAllowedException("Can only assign truck to pending bookings")
+
+        if assignment_data.truck_id:
+            # Manual assignment
+            truck = self.db.query(Truck).filter(
+                and_(
+                    Truck.id == assignment_data.truck_id,
+                    Truck.is_available == True,
+                    Truck.vehicle_type_id == booking.vehicle_type_id
+                )
+            ).first()
+            
+            if not truck:
+                raise TruckNotAvailableException(assignment_data.truck_id)
+        else:
+            # Auto-assignment
+            truck = self._auto_assign_truck(booking)
+            if not truck:
+                raise BookingNotAllowedException("No suitable trucks available for assignment")
+
+        return booking
+
+    def update_booking_status(self, booking_id: str, status_update: BookingStatusUpdate) -> Booking:
+        """Update booking status and state"""
+        booking = self.get_booking_details(booking_id)
+        
+        # Update status and state
+        booking.status = status_update.status
+        if status_update.state:
+            booking.state = status_update.state
+        
+        if status_update.expected_delivery_time:
+            booking.expected_delivery_time = status_update.expected_delivery_time
+        
+        if status_update.actual_delivery_time:
+            booking.actual_delivery_time = status_update.actual_delivery_time
+
+        # Handle truck availability based on status
+        if status_update.status in [BookingStatus.COMPLETED, BookingStatus.CANCELLED]:
+            if booking.assigned_truck_id:
+                truck = self.db.query(Truck).filter(Truck.id == booking.assigned_truck_id).first()
+                if truck:
+                    truck.is_available = True
+                    truck.status = TruckStatus.AVAILABLE
+
+        self.db.commit()
+        self.db.refresh(booking)
+
+        # Add status history
+        self._add_status_history(booking_id, status_update.status.value, status_update.notes)
+
+        return booking
+
+    def get_booking_status_history(self, booking_id: str) -> List[BookingStatusHistoryResponse]:
+        """Get booking status history"""
+        history = self.db.query(BookingStatusHistory).filter(
+            BookingStatusHistory.booking_id == booking_id
+        ).order_by(BookingStatusHistory.updated_at.desc()).all()
+        
+        return [BookingStatusHistoryResponse(
+            id=str(h.id),
+            booking_id=str(h.booking_id),
+            status=h.status,
+            updated_at=h.updated_at,
+            notes=h.notes
+        ) for h in history]
+
+    def get_truck_owner_trucks(self, truck_owner_id: str) -> List[Truck]:
+        """Get all trucks under a truck owner"""
+        return self.db.query(Truck).filter(Truck.truck_owner_id == truck_owner_id).all()
+
+    def cancel_booking(self, booking_id: str, user_id: str) -> Booking:
+        """Cancel a booking"""
+        booking = self.get_booking_details(booking_id)
+        
+        if booking.user_id != user_id:
+            raise BookingNotAllowedException("Only the booking owner can cancel the booking")
+        
+        if booking.status in [BookingStatus.COMPLETED, BookingStatus.CANCELLED]:
+            raise BookingNotAllowedException("Cannot cancel completed or already cancelled booking")
+
+        # Update booking status
+        booking.status = BookingStatus.CANCELLED
+        booking.state = BookingState.PENDING
+
+        # Free up truck if assigned
+        if booking.assigned_truck_id:
+            truck = self.db.query(Truck).filter(Truck.id == booking.assigned_truck_id).first()
+            if truck:
+                truck.is_available = True
+                truck.status = TruckStatus.AVAILABLE
+
+        self.db.commit()
+        self.db.refresh(booking)
+
+        # Add status history
+        self._add_status_history(booking_id, BookingStatus.CANCELLED, "Booking cancelled by user")
+
         return booking 

@@ -30,13 +30,8 @@ class User(Base):
     material_locations = relationship("MaterialLocation", back_populates="truck_owner")
     bookings_as_customer = relationship(
         "Booking",
-        foreign_keys="Booking.customer_id",
-        back_populates="customer"
-    )
-    bookings_as_owner = relationship(
-        "Booking",
-        foreign_keys="Booking.truck_owner_id",
-        back_populates="truck_owner"
+        foreign_keys="Booking.user_id",
+        back_populates="user"
     )
     ratings_given = relationship(
         "Rating",

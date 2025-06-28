@@ -9,15 +9,15 @@ import uuid
 class TruckOwnerProfile(Base):
     __tablename__ = "truck_owner_profiles"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, ForeignKey('users.id'), unique=True, nullable=False)
-    company_name = Column(String, nullable=True)
-    address = Column(String, nullable=True)
-    city = Column(String, nullable=True)
-    state = Column(String, nullable=True)
-    pincode = Column(String, nullable=True)
-    gst_number = Column(String, nullable=True)
-    pan_number = Column(String, nullable=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey('users.id'), unique=True, nullable=False)
+    company_name = Column(String(200), nullable=True)
+    address = Column(String(500), nullable=True)
+    city = Column(String(100), nullable=True)
+    state = Column(String(100), nullable=True)
+    pincode = Column(String(10), nullable=True)
+    gst_number = Column(String(20), nullable=True)
+    pan_number = Column(String(20), nullable=True)
     is_approved = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -28,14 +28,14 @@ class TruckOwnerProfile(Base):
 class CustomerProfile(Base):
     __tablename__ = "customer_profiles"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, ForeignKey('users.id'), unique=True, nullable=False)
-    address = Column(String, nullable=True)
-    city = Column(String, nullable=True)
-    state = Column(String, nullable=True)
-    pincode = Column(String, nullable=True)
-    company_name = Column(String, nullable=True)
-    gst_number = Column(String, nullable=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey('users.id'), unique=True, nullable=False)
+    address = Column(String(500), nullable=True)
+    city = Column(String(100), nullable=True)
+    state = Column(String(100), nullable=True)
+    pincode = Column(String(10), nullable=True)
+    company_name = Column(String(200), nullable=True)
+    gst_number = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

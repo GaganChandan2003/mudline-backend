@@ -24,6 +24,18 @@ class BookingNotFoundException(MudlineXException):
         super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
 
 
+class MaterialNotFoundException(MudlineXException):
+    def __init__(self, material_id: str = None):
+        detail = f"Material not found" if material_id is None else f"Material with id {material_id} not found"
+        super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+
+
+class VehicleTypeNotFoundException(MudlineXException):
+    def __init__(self, vehicle_type_id: str = None):
+        detail = f"Vehicle type not found" if vehicle_type_id is None else f"Vehicle type with id {vehicle_type_id} not found"
+        super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+
+
 class LocationNotFoundException(MudlineXException):
     def __init__(self, location_id: str = None):
         detail = f"Location not found" if location_id is None else f"Location with id {location_id} not found"

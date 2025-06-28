@@ -23,15 +23,15 @@ class Truck(Base):
     __tablename__ = "trucks"
 
     id = Column(UUIDType(binary=False), primary_key=True, default=uuid.uuid4)
+    vehicle_number = Column(String(20), unique=True, nullable=False, index=True)
+    vehicle_type_id = Column(UUIDType(binary=False), ForeignKey("vehicle_types.id"), nullable=False, index=True)
     truck_owner_id = Column(UUIDType(binary=False), ForeignKey("users.id"), nullable=False, index=True)
-    truck_number = Column(String(20), unique=True, nullable=False, index=True)
-    truck_type = Column(String(100), nullable=False)
-    capacity = Column(DECIMAL(10, 2), nullable=False)
-    current_location = Column(String(200))
+    driver_name = Column(String(100), nullable=False)
+    driver_contact = Column(String(20), nullable=False)
+    current_location = Column(String(200), nullable=False)  # eg: district
+    is_available = Column(Boolean, default=True)
     latitude = Column(DECIMAL(10, 8))
     longitude = Column(DECIMAL(11, 8))
-    driver_name = Column(String(100))
-    driver_contact = Column(String(20))
     driver_license = Column(String(50))
     is_preloaded = Column(Boolean, default=False)
     status = Column(Enum(TruckStatus), default=TruckStatus.AVAILABLE)
@@ -39,10 +39,10 @@ class Truck(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
+    vehicle_type = relationship("VehicleType", back_populates="trucks")
     truck_owner = relationship("User", back_populates="trucks")
     preloaded_materials = relationship("PreloadedMaterial", back_populates="truck")
-    bookings = relationship("Booking", back_populates="truck")
-
+    bookings = relationship("Booking", back_populates="assigned_truck")
 
 
 class PreloadedMaterial(Base):

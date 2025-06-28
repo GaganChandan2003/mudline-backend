@@ -14,39 +14,58 @@ class BookingType(str, enum.Enum):
 
 
 class BookingStatus(str, enum.Enum):
-    PENDING = "pending"
-    ACCEPTED = "accepted"
-    REJECTED = "rejected"
-    IN_TRANSIT = "in_transit"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
+    PENDING = "Pending"
+    ACCEPTED = "Accepted"
+    TRUCK_ASSIGNED = "Truck Assigned"
+    LOADING = "Loading"
+    IN_TRANSIT = "In Transit"
+    COMPLETED = "Completed"
+    CANCELLED = "Cancelled"
+
+
+class BookingState(str, enum.Enum):
+    PENDING = "Pending"
+    ACCEPTED = "Accepted"
+    ASSIGNED = "Assigned"
+    LOADING = "Loading"
+    TRANSIT = "Transit"
+    DELIVERED = "Delivered"
 
 
 class Booking(Base):
     __tablename__ = "bookings"
 
     id = Column(UUIDType(binary=False), primary_key=True, default=uuid.uuid4)
-    customer_id = Column(UUIDType(binary=False), ForeignKey("users.id"), nullable=False, index=True)
-    truck_owner_id = Column(UUIDType(binary=False), ForeignKey("users.id"), nullable=False, index=True)
-    truck_id = Column(UUIDType(binary=False), ForeignKey("trucks.id"), nullable=True, index=True)
-    booking_type = Column(Enum(BookingType), nullable=False)
-    pickup_location = Column(String(200), nullable=False)
-    drop_location = Column(String(200), nullable=False)
-    material_type = Column(String(100), nullable=False)
+    user_id = Column(UUIDType(binary=False), ForeignKey("users.id"), nullable=False, index=True)
+    material_source_id = Column(UUIDType(binary=False), ForeignKey("material_sources.id"), nullable=False, index=True)
+    destination = Column(String(200), nullable=False)
+    vehicle_type_id = Column(UUIDType(binary=False), ForeignKey("vehicle_types.id"), nullable=False, index=True)
     quantity = Column(DECIMAL(10, 2), nullable=False)
-    unit = Column(String(20), nullable=False)
-    total_price = Column(DECIMAL(10, 2), nullable=False)
-    special_requirements = Column(Text)
     status = Column(Enum(BookingStatus), default=BookingStatus.PENDING)
-    booking_date = Column(DateTime(timezone=True), nullable=False)
-    estimated_delivery = Column(DateTime(timezone=True))
-    actual_delivery = Column(DateTime(timezone=True))
+    assigned_truck_id = Column(UUIDType(binary=False), ForeignKey("trucks.id"), nullable=True, index=True)
+    booking_time = Column(DateTime(timezone=True), nullable=False)
+    expected_delivery_time = Column(DateTime(timezone=True))
+    actual_delivery_time = Column(DateTime(timezone=True))
+    state = Column(Enum(BookingState), default=BookingState.PENDING)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
-    customer = relationship("User", foreign_keys=[customer_id], back_populates="bookings_as_customer")
-    truck_owner = relationship("User", foreign_keys=[truck_owner_id], back_populates="bookings_as_owner")
-    truck = relationship("Truck", back_populates="bookings")
+    user = relationship("User", foreign_keys=[user_id], back_populates="bookings_as_customer")
+    material_source = relationship("MaterialSource", back_populates="bookings")
+    vehicle_type = relationship("VehicleType", back_populates="bookings")
+    assigned_truck = relationship("Truck", foreign_keys=[assigned_truck_id], back_populates="bookings")
     payments = relationship("Payment", back_populates="booking")
-    ratings = relationship("Rating", back_populates="booking") 
+    ratings = relationship("Rating", back_populates="booking")
+
+
+class BookingStatusHistory(Base):
+    __tablename__ = "booking_status_history"
+
+    id = Column(UUIDType(binary=False), primary_key=True, default=uuid.uuid4)
+    booking_id = Column(UUIDType(binary=False), ForeignKey("bookings.id"), nullable=False, index=True)
+    status = Column(String(50), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
+    notes = Column(Text)
+
+    booking = relationship("Booking", backref="status_history") 
